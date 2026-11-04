@@ -1,0 +1,159 @@
+"""
+Base settings for the Django project.
+"""
+
+from pathlib import Path
+
+import environ
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+# Initialize environ
+env = environ.Env()
+# Read .env file only if it exists. Docker environment variables take precedence.
+environ.Env.read_env(BASE_DIR / ".env", overwrite=False)
+
+SECRET_KEY = env.str("SECRET_KEY", default=None)
+DEBUG = env.bool("DEBUG", default=False)
+
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+
+# Application definition
+INSTALLED_APPS = [
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "django_vite",
+    "apps.main.apps.MainConfig",
+    "apps.demo.apps.DemoConfig",
+    "apps.users.apps.UsersConfig",
+    "apps.tracker.apps.TrackerConfig",
+]
+
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+]
+
+ROOT_URLCONF = "config.urls"
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [BASE_DIR / "templates"],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+                "core.context_processors.global_settings",
+            ],
+        },
+    },
+]
+
+WSGI_APPLICATION = "config.wsgi.application"
+ASGI_APPLICATION = "config.asgi.application"
+
+# Database & Cache
+DATABASES = {"default": env.db("DATABASE_URL", default="postgres://user:pass@db:5432/db")}
+DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
+DATABASES["default"]["CONN_MAX_AGE"] = 60
+
+if env.bool("CACHE_ENABLED", default=False):
+    CACHES = {"default": env.cache("REDIS_URL", default="redis://redis:6379/1")}
+
+# Logging (Output to Docker stdout)
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"verbose": {"format": "{asctime} {levelname} {name}: {message}", "style": "{"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "verbose"}},
+    "root": {"handlers": ["console"], "level": env.str("LOG_LEVEL", default="INFO")},
+    "loggers": {
+        "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+    },
+}
+
+# i18n & Time
+LANGUAGE_CODE = "ru"
+TIME_ZONE = env.str("TIME_ZONE", default="UTC")
+USE_I18N = True
+USE_TZ = True
+
+# Статические файлы
+STATIC_URL = "/static/"
+# Меняем 'theme/static' на просто 'static'
+STATICFILES_DIRS = [BASE_DIR / "static"]
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# Настройки для django-vite (чтобы он знал, откуда брать манифест)
+DJANGO_VITE_ASSETS_PATH = BASE_DIR / "static" / "dist"
+DJANGO_VITE_DEV_MODE = DEBUG # Включает HMR, если DEBUG=True
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+# Project Settings
+try:
+    VERSION_FILE = BASE_DIR / ".version"
+    APP_VERSION = VERSION_FILE.read_text(encoding="utf-8").strip()
+except FileNotFoundError:
+    APP_VERSION = "0.0.0-dev"
+
+APP_NAME = env.str("APP_NAME", default="Djira")
+APP_TITLE = env.str("APP_TITLE", default="Djira — трекер задач")
+
+# Users
+AUTH_USER_MODEL = "users.User"
+LOGIN_URL = "users:login"
+LOGIN_REDIRECT_URL = "/users/profile/"
+
+
+# Email Configuration
+_email_user = env.str("EMAIL_HOST_USER", default="")
+
+MAILERS = {
+    "default": {
+        "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+        "OPTIONS": {
+            "host": env.str("EMAIL_HOST", default="smtp.gmail.com"),
+            "port": env.int("EMAIL_PORT", default=587),
+            "use_tls": env.bool("EMAIL_USE_TLS", default=False),
+            "use_ssl": env.bool("EMAIL_USE_SSL", default=False),
+            "username": _email_user,
+            "password": env.str("EMAIL_HOST_PASSWORD", default=""),
+        },
+    }
+}
+
+DEFAULT_FROM_EMAIL = env.str("DEFAULT_FROM_EMAIL", default=_email_user)
+SERVER_EMAIL = env.str("SERVER_EMAIL", default=_email_user)
+
+# Интеграция с Vite
+DJANGO_VITE = {
+    "default": {
+        # Включаем режим разработчика, если включен DEBUG в Django
+        "dev_mode": DEBUG,
+
+        # Хост и порт, куда браузер пойдет за скриптами Vite
+        "dev_server_host": "localhost",
+        "dev_server_port": 5173,
+
+        # Путь к manifest.json (используется только в продакшене, когда dev_mode=False).
+        # Укажите папку, куда Vite будет билдить статику.
+        "manifest_path": BASE_DIR / "staticfiles" / "dist" / ".vite" / "manifest.json",
+    }
+}
+
